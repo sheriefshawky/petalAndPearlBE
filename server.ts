@@ -10,30 +10,22 @@ import dotenv from "dotenv";
 import cors from "cors";
 import Stripe from "stripe";
 import Mailjet from "node-mailjet";
-import { createServer as createViteServer } from "vite";
 
 
 
 dotenv.config();
 
+let isPostgres = true;
+
 const { Pool } = pg;
 let pool: pg.Pool | null = null;
-let sqliteDb: Database.Database | null = null;
-
-let isPostgres = !!process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("REPLACE_WITH");
-
-function getSqlite() {
-  if (!sqliteDb) {
-    sqliteDb = new Database("database.sqlite");
-    sqliteDb.pragma("journal_mode = WAL");
-  }
-  return sqliteDb;
-}
 
 function getPool() {
-  if (!isPostgres) return null;
   if (!pool) {
     const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      throw new Error("DATABASE_URL environment variable is missing. Please configure it in the Secrets panel.");
+    }
     pool = new Pool({
       connectionString,
       connectionTimeoutMillis: 5000,
@@ -41,9 +33,10 @@ function getPool() {
       idleTimeoutMillis: 30000,
     });
     
+    // Handle pool errors to prevent process crash
     pool.on('error', (err) => {
       console.error('Unexpected error on idle client', err);
-      pool = null;
+      pool = null; // Reset pool on fatal error
     });
   }
   return pool;
@@ -54,7 +47,6 @@ const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SEC
 
 // --- Helper to handle DB queries with error catching ---
 const query = async (text: string, params: any[] = []) => {
-  if (isPostgres) {
     try {
       const p = getPool();
       if (!p) throw new Error("PostgreSQL pool is not initialized");
@@ -68,34 +60,6 @@ const query = async (text: string, params: any[] = []) => {
       }
       throw err;
     }
-  } else {
-    try {
-      const db = getSqlite();
-      // Convert $1, $2 to ? for SQLite
-      let sqliteText = text;
-      const sqliteParams = [...params];
-      
-      // Simple regex to replace $1, $2... with ?
-      // This is safe as long as $ is not used in literal strings in the SQL
-      sqliteText = sqliteText.replace(/\$\d+/g, '?');
-
-      const isReturning = sqliteText.trim().toUpperCase().includes("RETURNING");
-      if (sqliteText.trim().toUpperCase().startsWith("SELECT") || isReturning) {
-        const rows = db.prepare(sqliteText).all(...sqliteParams);
-        return { rows };
-      } else {
-        const result = db.prepare(sqliteText).run(...sqliteParams);
-        // Mocking the pg structure for consistency
-        return { 
-          rows: result.lastInsertRowid ? [{ id: result.lastInsertRowid }] : [],
-          rowCount: result.changes 
-        };
-      }
-    } catch (err) {
-      console.error("SQLite query error:", err);
-      throw err;
-    }
-  }
 };
 
 // Initialize Database
@@ -192,7 +156,7 @@ async function initDb() {
   `;
 
   try {
-    if (isPostgres) {
+
       try {
         const p = getPool();
         if (p) {
@@ -227,13 +191,8 @@ async function initDb() {
         isPostgres = false;
         // Fall through to SQLite initialization
       }
-    }
+    
 
-    if (!isPostgres) {
-      const db = getSqlite();
-      db.exec(schema);
-      console.log("SQLite initialized");
-    }
 
     // Create default admin
     const adminUser = process.env.ADMIN_USER || "admin";
