@@ -12,7 +12,6 @@ import Stripe from "stripe";
 import Mailjet from "node-mailjet";
 import { createServer as createViteServer } from "vite";
 
-import Database from "better-sqlite3";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
