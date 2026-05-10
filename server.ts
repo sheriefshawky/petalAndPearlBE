@@ -636,7 +636,7 @@ async function startServer() {
         (error, result) => {
           if (error) {
             console.error('Cloudinary upload error:', error);
-            return res.status(500).json({ error: "Upload failed" });
+            return res.status(500).json({ error: str(error) });
           }
           res.json({ url: result?.secure_url });
         }
