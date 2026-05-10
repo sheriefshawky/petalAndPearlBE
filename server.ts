@@ -11,6 +11,9 @@ import cors from "cors";
 import Stripe from "stripe";
 import Mailjet from "node-mailjet";
 
+import { v2 as cloudinary } from 'cloudinary';
+import multer from 'multer';
+
 
 
 dotenv.config();
