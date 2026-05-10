@@ -42,8 +42,17 @@ function getPool() {
   return pool;
 }
 
+// --- Cloudinary Configuration ---
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
 const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret";
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
 // --- Helper to handle DB queries with error catching ---
 const query = async (text: string, params: any[] = []) => {
@@ -603,6 +612,37 @@ async function startServer() {
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Database error" });
+    }
+  });
+
+  // Cloudinary Upload
+  app.post("/api/admin/upload", authenticateToken, upload.single('image'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      // Check if Cloudinary is configured
+      if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+        return res.status(500).json({ error: "Cloudinary is not configured in environment variables" });
+      }
+
+      // Using upload_stream for memory buffer
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { folder: 'products' },
+        (error, result) => {
+          if (error) {
+            console.error('Cloudinary upload error:', error);
+            return res.status(500).json({ error: "Upload failed" });
+          }
+          res.json({ url: result?.secure_url });
+        }
+      );
+
+      uploadStream.end(req.file.buffer);
+    } catch (err) {
+      console.error('Upload handler error:', err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
